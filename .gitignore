@@ -8,3 +8,6 @@ desktop.ini
 .vscode/
 *.swp
 *~
+
+# Packaged skill bundles (generated artifacts — sources live in each SKILL.md)
+*.skill

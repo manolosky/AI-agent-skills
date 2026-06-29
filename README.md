@@ -2,9 +2,11 @@
 
 A personal collection of [Claude Code](https://claude.com/claude-code) **skills** — reusable, model-invoked instruction packages that teach the agent how to perform specific engineering tasks following a consistent set of conventions.
 
-Each skill lives in its own folder containing a `SKILL.md` file. The frontmatter (`name` + `description`) tells Claude Code *when* the skill applies; the body tells it *how* to execute the task. Skills with a matching `.skill` file also ship a packaged (zipped) bundle for easy import.
+Each skill lives in its own folder containing a `SKILL.md` file. The frontmatter (`name` + `description`) tells Claude Code *when* the skill applies; the body tells it *how* to execute the task.
 
 These skills are tailored to a **WordPress + Bootstrap 5** development workflow (ACF blocks, ITCSS/BEM SCSS, quality tooling) plus a couple of general-purpose Git helpers.
+
+> The `.skill` packaged bundles (zipped exports of a skill folder) are **not** versioned here — they are generated artifacts and the `SKILL.md` files are the source of truth. They are git-ignored; build them only when you need to share or import a skill elsewhere.
 
 ## Available skills
 
@@ -26,16 +28,13 @@ These skills are tailored to a **WordPress + Bootstrap 5** development workflow 
 ├── acf-field-group/
 │   └── SKILL.md
 ├── bootstrap-markup/
-│   ├── SKILL.md
-│   └── bootstrap-markup.skill      # packaged bundle
+│   └── SKILL.md
 ├── git-commit-format/
-│   ├── SKILL.md
-│   └── git-commit-format.skill
+│   └── SKILL.md
 ├── run-tests/
 │   └── SKILL.md
 └── scss-bem-architecture/
-    ├── SKILL.md
-    └── scss-bem-architecture.skill
+    └── SKILL.md
 ```
 
 ## Usage
@@ -55,7 +54,7 @@ Once in place, Claude Code loads each skill's `name` and `description` automatic
 
 - Every skill folder contains a `SKILL.md` with YAML frontmatter (`name`, `description`) followed by the instructions.
 - `description` is written so Claude Code can decide *when* to apply the skill, including the kinds of phrasing that should trigger it.
-- `.skill` files are zipped exports of a skill folder, useful for sharing or importing into other environments.
+- A `.skill` file is a zipped export of a skill folder, useful for sharing or importing into other environments. These are generated on demand and kept out of version control (see `.gitignore`); the `SKILL.md` sources are authoritative.
 
 ## License
 
