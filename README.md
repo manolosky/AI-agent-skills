@@ -17,6 +17,7 @@ These skills are tailored to a **WordPress + Bootstrap 5** development workflow 
 | [`bootstrap-markup`](bootstrap-markup/SKILL.md) | Generate or convert HTML so it follows Bootstrap 5.3+ conventions: helper/component classes first, zero inline styles, and clean semantic structure. Missing tokens become Sass variables merged into the relevant Bootstrap map. |
 | [`scss-bem-architecture`](scss-bem-architecture/SKILL.md) | Write or edit CSS/SCSS the project's way: modular BEM inside an ITCSS layered Sass architecture over Bootstrap 5.3. Companion to `bootstrap-markup`. |
 | [`run-tests`](run-tests/SKILL.md) | Run the full quality suite for a WordPress theme — PHP CodeSniffer, Stylelint, ESLint, PHPStan, and Rector dry-run — and fix issues until every check passes. |
+| [`npm-vuln-remediation`](npm-vuln-remediation/SKILL.md) | Remediate `npm audit` findings in WordPress themes built with laravel-mix + `@wordpress/scripts`, through a phased process (direct updates, `npm update`/`audit fix`, major bumps, targeted overrides) that keeps the build and lints green. |
 | [`git-commit-format`](git-commit-format/SKILL.md) | Enforce the project's commit-message convention (`type: description`, in English) and attribute commits only to the user's Git identity — never co-authored by an AI. |
 
 ## Repository layout
@@ -30,6 +31,8 @@ These skills are tailored to a **WordPress + Bootstrap 5** development workflow 
 ├── bootstrap-markup/
 │   └── SKILL.md
 ├── git-commit-format/
+│   └── SKILL.md
+├── npm-vuln-remediation/
 │   └── SKILL.md
 ├── run-tests/
 │   └── SKILL.md
