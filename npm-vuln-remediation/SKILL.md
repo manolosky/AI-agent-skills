@@ -2,49 +2,71 @@
 name: npm-vuln-remediation
 description: >
   Remediate npm audit vulnerability findings in WordPress themes built with
-  laravel-mix + @wordpress/scripts. The input is an initial `npm
-  audit` run, which becomes the baseline report the whole process works from.
-  Use when asked to fix npm audit vulnerabilities or update vulnerable
-  dependencies in one of these themes. Runs a phased process — baseline, direct
-  updates, npm update + audit fix, latest-major bumps for any package still
-  carrying high-risk advisories (update, validate, repair, re-validate — e.g.
-  @wordpress/scripts + its ESLint flat-config migration), and targeted
-  overrides — verifying build and lints stay green after every step. Not for
-  plain webpack apps or Tailwind setups without laravel-mix + @wordpress/scripts.
+  laravel-mix. The input is an initial `npm audit` run, which becomes the
+  baseline report the whole process works from. Use when asked to fix npm audit
+  vulnerabilities or update vulnerable dependencies in one of these themes.
+  Core strategy: replace the monolithic `@wordpress/scripts` with only the
+  individual @wordpress/* packages the theme actually consumes (shrinking the
+  dependency tree is the fix), then update/remediate WITHOUT `"overrides"` —
+  overrides are restricted to a last resort for otherwise-unfixable
+  high/critical advisories. Residual vulnerabilities are documented in the
+  final report with their provenance (which dependency tree they come from).
+  Not for themes whose build actually runs on wp-scripts, plain webpack apps,
+  or Tailwind setups without laravel-mix.
 ---
 
-# npm vulnerability remediation (laravel-mix + @wordpress/scripts themes)
+# npm vulnerability remediation (laravel-mix themes)
 
 Phased, measurable process to take a theme from an initial `npm audit` report
-to a clean (or residual-documented) `npm audit`, keeping the toolchain green.
-The input is the baseline `npm audit` captured in Phase 0 — that report is the
-source of truth for what needs remediating.
+to the **lowest achievable count without `"overrides"`**, keeping the toolchain
+green. The input is the baseline `npm audit` captured in Phase 0 — that report
+is the source of truth for what needs remediating.
+
+## Purpose and philosophy
+
+1. **Shrink the tree instead of patching it.** The single highest-impact move
+   is replacing the monolithic `@wordpress/scripts` (~1,900-package lock) with
+   only the individual packages the theme's configs actually consume. Most
+   advisories in these themes live in wp-scripts' unused tooling (jest,
+   playwright, puppeteer, lighthouse/@sentry/@opentelemetry, markdownlint…);
+   removing the tree kills them at the root. Validated on RFH (2026-07):
+   56 → 11 vulnerabilities and 1,899 → 1,171 packages (−38%) with zero
+   overrides. Re-validated on Bracewell (2026-07): ~1,900 → 1,184 packages,
+   a 7-entry overrides block removed entirely, 0 high/critical, same
+   11-residual floor.
+2. **Overrides are restricted.** The goal is to fix the maximum number of
+   issues WITHOUT `"overrides"`. Pins go in as **direct devDependencies** when
+   the parent's semver range accepts the pinned version (npm dedupes the tree
+   to the direct pin — same effect, no override block to rot). An override is
+   allowed ONLY as a last resort for a **high/critical** advisory that cannot
+   be resolved any other way, and must be justified in the report. Never add
+   overrides for low/moderate residuals.
+3. **Residuals are reported, not hidden.** Whatever remains after the cycle is
+   listed in the final report with its provenance: which dependency tree it
+   comes from, why it has no fix, and why it is acceptable (severity, dev-only,
+   build-time only).
 
 ## Operating rules
 
 - **Severity policy.** Resolving every **high** and **critical** advisory is
-  **mandatory** — the cycle is not done while any remain. Residual **low** and
-  **moderate** advisories are **acceptable**: fix them when cheap and safe, but
-  they may be documented and accepted rather than chased (especially when the
-  only fix is a breaking change to unused/dev-only code).
+  **mandatory** — the cycle is not done while any remain (a last-resort
+  override is acceptable for these, documented). Residual **low** and
+  **moderate** advisories are acceptable when they have no override-free fix:
+  they go to the report with provenance instead of being overridden away.
 - Work on a `fix/<ticket>` branch. **Do NOT commit per phase.** Keep all work
-  uncommitted while progressing through the phases. Make a **single commit only
-  at the very end**, after the user has reviewed and confirmed that everything is
-  fixed and working (clean audit of high/critical, green build + lints, site OK).
+  uncommitted until the user confirms the final state; then a single commit.
   Commit format: `chore: ...`, single line, no AI attribution.
 - **Never invent or "upgrade" a version pin from memory.** Every pin below was
   found empirically on a real cycle and every "CVE-clean" claim drifts over
   time. Before applying any pin, confirm the current safe version at run time
   with `npm view <pkg> versions`, the package changelog, and `npm audit`.
-  Treat the pins in this skill as *starting points and known traps*, not as
-  eternally-correct values.
 
 ## Phase 0 — Baseline (do NOT skip)
 
 First read the `"scripts"` block in `package.json` to learn this theme's real
-script names. The commands below assume `build`, `lint:js`, and `lint:css`
-(Bracewell / ~80% of sites) — substitute the theme's actual build/lint scripts
-if they differ, and skip any that don't exist.
+script names. The commands below assume `build`, `lint:js`, and `lint:css` —
+substitute the theme's actual scripts if they differ, and skip any that don't
+exist.
 
 ```bash
 npm audit > audit-baseline.txt   # count + full report
@@ -56,239 +78,227 @@ If the baseline is already red, fix or note that first; otherwise you cannot
 attribute later breakage to your updates. Record the vulnerability count in the
 form `N vulnerabilities (X low, Y moderate, Z high, W critical)`.
 
-## Phase 1 — Direct minors, then `npm update`, then `npm audit fix`
+## Phase 1 — Replace `@wordpress/scripts` with the individual packages
 
-**Ordering lesson (the single most important rule here):** `npm update`
-re-resolves pinned transitive deps and can UNDO what `npm audit fix` fixed.
-Always run `npm update` first and `npm audit fix` last.
+This is the core of the skill. Skip it only if the theme has no
+`@wordpress/scripts` (already migrated) — and abort the skill entirely if any
+npm script actually runs `wp-scripts` for building (that theme is out of
+scope).
 
-1. Inventory: `npm outdated`, plus `npm view <pkg>@<major> version` for
-   exact-pinned deps. Update every direct dep to the latest patch/minor
-   **within its current major**.
-2. Risk-check each runtime (browser-shipped) jump against its changelog before
-   accepting it — whatever front-end libraries this specific theme ships. A
-   minor bump can hide breaking HTML/CSS or SASS changes. See "Runtime update
-   traps" for the general pattern and example libraries.
-3. `npm update` to refresh ranged transitives, then `npm audit fix`.
-4. Verify build + lints. Add any required pins to `"overrides"` in
-   package.json (see "Known traps & pins").
-5. Leave changes uncommitted (final commit happens at the end — see Operating
-   rules).
+1. **Inventory what the theme actually consumes.** Read `eslint.config.*`
+   (or `.eslintrc*`), `.stylelintrc*`, `.babelrc`/`webpack.mix.js`, `lefthook`
+   config, and the `"scripts"` block. Grep for `@wordpress/` requires/extends.
+   The typical set for these themes is only:
+   - `@wordpress/eslint-plugin` (eslint flat config rules)
+   - `@wordpress/prettier-config` (prettier/prettier rule options)
+   - `@wordpress/stylelint-config` (stylelint extends, `/scss` variant)
+   - `globals` (jQuery/browser globals in the eslint flat config)
+   - `sass` + `sass-loader` — REQUIRED for any theme using `mix.sass()`: both
+     came transitively from wp-scripts. If omitted, laravel-mix auto-installs
+     them **mid-build** on the first `npm run build` (`npm install --save-dev`
+     behind your back), mutating package.json, failing that build, and often
+     triggering the corrupted-`.bin` trap below. Add them up front at the
+     versions mix expects (`sass-loader` ^12, `sass` latest 1.x).
+   A theme may consume more (e.g. `@wordpress/babel-preset-default` if the
+   eslint flat config references it in `babelOptions`) — include exactly what
+   the configs reference, nothing else.
+2. **Swap.** Remove `@wordpress/scripts`; add each consumed package as a direct
+   devDependency at its latest version. Verify peers first at run time
+   (`npm view <pkg> peerDependencies`) — e.g. `@wordpress/eslint-plugin` peers
+   specific eslint and prettier majors, so align those in the same install.
+   No lint-config changes should be needed —
+   the configs already reference these package names. If the theme still uses
+   a legacy `.eslintrc`, migrate to a flat `eslint.config.cjs` using the
+   **team's minimal shape** (validated on grant-eisenhofer and
+   williams-connolly, adopted on james-bates 2026-07). Do NOT spread the full
+   flat preset (`...wordpress.configs.recommended`): it drags in
+   `eslint-plugin-import` whose typescript resolver needs
+   `eslint-import-resolver-typescript` hoisted as a direct devDependency plus
+   a `typescript` pin, and fails otherwise with "Resolve error: typescript
+   with invalid interface loaded as resolver". The team pattern instead
+   registers the plugin and applies only formatting rules — effective lint is
+   `prettier/prettier` (with `@wordpress/prettier-config`) + `curly` + jQuery
+   globals, scoped to `assets/js/**/*.js`:
 
-## Phase 2 — Overrides for in-tree-unfixable advisories
+   ```js
+   const globals = require("globals");
+   const prettierPlugin = require("eslint-plugin-prettier");
+   const wpPrettierConfig = require("@wordpress/prettier-config");
 
-`npm audit` claims "fix available" for some packages it cannot actually move
-because parents pin exact/older ranges. Apply overrides for these (all in
-dev-only trees). Use the versions `npm audit fix` itself selects where
-possible, and re-verify each against current advisories — see "Known traps &
-pins" for the recurring set.
+   module.exports = [
+   	{ ignores: [".git/**", ".github/**", ".vscode/**", "build/**",
+   		"dist/**", "node_modules/**", "tests/**", "vendor/**"] },
+   	{
+   		files: ["assets/js/**/*.js"],
+   		languageOptions: { globals: { ...globals.jquery } },
+   		plugins: { prettier: prettierPlugin },
+   		rules: {
+   			"prettier/prettier": ["error", wpPrettierConfig],
+   			curly: ["error", "all"],
+   		},
+   	},
+   ];
+   ```
 
-Verify build + lints (do not commit yet).
+   This requires `eslint-plugin-prettier` and `@wordpress/prettier-config` as
+   direct devDependencies — and NOT `@wordpress/eslint-plugin`: the sibling
+   files register that plugin and spread `configs.recommended.rules`, but on
+   plugin v25+ `recommended` is a flat array so the spread is a no-op — the
+   only effective rules are prettier/prettier and curly (which the siblings
+   get from the legacy spread; here it is declared explicitly). Dropping the
+   plugin entirely is equivalent lint-wise and removes ~170 packages plus its
+   nested minimatch/brace-expansion advisory paths (james-bates 2026-07:
+   1,184 → 1,011 packages, 20 → 16 vulns). Two consequences to expect and
+   accept: (a) `@wordpress/prettier-config` 4.x dropped the `wp-prettier`
+   fork and its paren-spacing — the current WP style has NO spaces inside
+   parens, so the first `format:js` run reformats every theme JS file
+   (one-time diff; do not pin the frozen `wp-prettier` fork); (b) rules like
+   `no-unused-vars` are no longer active, so `--fix` removes now-unused
+   `eslint-disable` directives.
+   **Node engines**: after the swap, check the node requirement of the bumped
+   tooling (`npm view eslint@<v> engines`) and update the theme's
+   `"engines".node` if it falls short. Team convention: declare a **single
+   simple range** (e.g. `"node": ">=22"`) — never a multi-version expression
+   like `"^20.19.0 || ^22.13.0 || >=24"`, even if that is what the tool
+   declares. If the tool's real floor inside a major is stricter than the
+   declared range (e.g. eslint 10 supports 22.x only from 22.13), note that
+   caveat in the report instead of encoding it in `engines`.
+3. **Remove any existing `"overrides"` block** — the new smaller tree gets to
+   re-resolve freely; overrides only come back per the last-resort rule.
+4. **Clean install**: `rm -rf node_modules package-lock.json && npm install`.
+5. Record the new `npm audit` count and verify build + lints. Expect the build
+   to fail on the webpack/SizeFormatHelpers trap — fixed in Phase 2 with a
+   direct pin, not an override.
 
-## Phase 3 — Major-version bumps for packages with remaining high-risk advisories
+## Phase 2 — Direct pins and updates (no overrides)
 
-After Phases 1–2, some high/critical advisories only clear by moving a package
-up a MAJOR version — a breaking jump `npm audit fix` will not make on its own.
-Handle **every** such package, not just `@wordpress/scripts`, with the same
-repeatable loop:
+1. **webpack**: laravel-mix requires `webpack/lib/SizeFormatHelpers`, removed
+   in webpack 5.105+. Pin the newest 5.10x that still ships it AND is CVE-clean
+   (was `~5.104.1` at last cycle — reverify) as a **direct devDependency**.
+   laravel-mix accepts `^5.60`, so npm dedupes the whole tree to the direct
+   pin — no override needed.
+2. Update every remaining direct dep to the latest patch/minor within its
+   current major (`npm outdated`). Risk-check runtime (browser-shipped) jumps
+   against changelogs — see "Runtime update traps".
+3. `npm update` first, then `npm audit fix` (this order matters: `npm update`
+   re-resolves pinned transitives and can UNDO what `npm audit fix` fixed).
+4. Verify build + lints. Record the audit count.
 
-1. **Identify.** From the current `npm audit`, list the packages whose remaining
-   advisories are high/critical and whose only available fix is a new major.
-   Include direct deps and dev tooling alike (build, lint, test).
-2. **Ask before bumping.** A major is a breaking change, so do NOT apply it
-   automatically. For each candidate, present to the user: the package, the
-   current → latest major version, and the specific advisories/errors that major
-   resolves (CVE IDs / advisory titles + severity from the audit). Wait for the
-   user's go-ahead before proceeding, and skip any the user declines.
-3. **Update to the latest major.** For approved packages, bump each to its newest
-   published major — `npm view <pkg> version` for the current latest. Do NOT pin
-   to a fixed number from this document; "latest" moves over time, and
-   hard-coding a version would leave the theme stuck on an old one. Also update
-   the peer deps the new major requires.
-4. **Validate.** `npm run build`, `npm run lint:js`, and `npm run lint:css` must
-   all pass; compare build warnings vs the Phase 0 baseline.
-5. **Repair.** Fix whatever the major broke — config migrations, renamed APIs,
-   new peer deps, new lint defaults (see the worked example below for the kind of
-   breakage to expect).
-6. **Re-validate + audit.** Re-run build + both lints (and `npx lefthook run
-   pre-commit`) until green, then `npm audit fix` again — the new tree often
-   unlocks more fixes.
+## Phase 3 — Major-version bumps for remaining high/critical advisories
 
-Do this **per package** (or per coherent group), validating after each so any
-breakage is attributable to a specific bump. Do not commit between packages —
-everything lands in the single final commit.
+If high/critical advisories remain and only clear by moving a **direct**
+dependency up a major:
 
-### Worked example — `@wordpress/scripts` to its latest major (ESLint flat config)
+1. Identify them from the current `npm audit`.
+2. **Ask before bumping** — present package, current → latest major, and the
+   advisories it resolves. Wait for the go-ahead; skip declined ones.
+3. Bump approved packages to the newest published major (`npm view <pkg>
+   version` at run time — never hard-code), update required peers, repair
+   whatever breaks, re-validate, re-run `npm audit fix`.
+4. **Last resort only**: if a high/critical still cannot be resolved (parent
+   pins it and no major helps), a targeted override is permitted — scoped as
+   narrowly as possible (e.g. `"parent": { "dep": "^x.y.z" }`), with the
+   justification recorded in the report. This is the ONLY case where an
+   override may be added.
 
-Relevant when the theme still uses a legacy `.eslintrc`. Recent wp-scripts majors
-require a modern ESLint with flat config, which makes this the most involved case
-of the loop above.
+## Phase 4 — Residuals report + close
 
-1. Bump `@wordpress/scripts` to its **latest** major and `eslint` to the version
-   that major peers on. Read the current values from `npm view @wordpress/scripts
-   version` and the wp-scripts release notes — do not hard-code a version here.
-2. Add **both** of these as direct devDependencies (required — see the trap in
-   step 4): `@wordpress/eslint-plugin` and `eslint-import-resolver-typescript`,
-   each at the version the new wp-scripts / eslint expects.
-3. Replace `.eslintrc` + `.eslintignore` with `eslint.config.js`:
+No high or critical advisory may reach this phase unresolved. What remains is
+low/moderate with no override-free fix. Do NOT override them — document them:
 
-```js
-const wpPlugin = require( '@wordpress/eslint-plugin' );
-
-module.exports = [
-	{
-		ignores: [ '**/build/**', '**/dist/**', '**/node_modules/**',
-			'**/vendor/**', '**/tests/**', '.github/**', '.vscode/**' ],
-	},
-	...wpPlugin.configs.recommended,
-	{
-		languageOptions: {
-			globals: { jQuery: 'readonly', $: 'readonly' }, // if theme uses jQuery
-			parserOptions: {
-				requireConfigFile: false,
-				babelOptions: {
-					presets: [ require.resolve( '@wordpress/babel-preset-default' ) ],
-				},
-			},
-		},
-	},
-];
-```
-
-4. **Known trap — `Resolve error: typescript with invalid interface loaded as
-   resolver`:** eslint-plugin-import 2.x has no modern-eslint peer entry, so
-   npm nests it (and the typescript resolver) under
-   `@wordpress/eslint-plugin/`, while the hoisted eslint-module-utils then
-   `require()`s the literal `typescript` package as a resolver. Fix = the two
-   direct devDependencies in step 2. If node_modules looks corrupted after
-   incremental installs, `npm run clean` (fresh lock + node_modules) and
-   re-check.
-5. Expected new lint errors: modern ESLint defaults `no-unused-vars` with
-   `caughtErrors: 'all'` → replace `catch ( err ) {}` with an optional catch
-   binding `catch {}`. Then `eslint --fix` removes stale disable directives.
-6. Re-run `npm audit fix` (the new tree unlocks more fixes), verify
-   build + lint:js + lint:css + `npx prettier --version` (lefthook needs it).
-   Do not commit yet.
-
-## Phase 4 — Residual overrides + accepted risks
-
-Apply targeted overrides for what remains (dev-only, unused code paths) — see
-"Known traps & pins". Then document anything that has no upstream fix instead of
-chasing it.
-
-Per the severity policy, only **low/moderate** advisories may be left as
-accepted residuals here. **No high or critical advisory may reach this phase
-unresolved** — if one still remains, go back and resolve it (override, major
-bump, or replace the dependency) before closing the cycle.
-
-Final: record the `npm audit` count (confirm zero high/critical) and verify
-everything. Then present the summary to the user (audit before/after, what was
-changed, residual low/moderate accepted). **Only after the user confirms it's
-all fixed and working, make the single final commit** (see Operating rules).
-Do not commit before that confirmation.
+- For each residual: package, severity, advisory, and **provenance** — the
+  dependency chain it hangs from and why it is frozen (e.g. the permanent
+  laravel-mix residuals below).
+- Expected floor on these themes (all dev-only, build-time):
+  - `elliptic` tree (~5 low): elliptic → browserify-sign/create-ecdh →
+    crypto-browserify → node-libs-browser → **laravel-mix**. No upstream fix;
+    laravel-mix 6.0.49 is the final release ever.
+  - laravel-mix's own tooling (~6 moderate): uuid/node-notifier/sockjs/
+    webpack-dev-server 4/webpack-notifier → **laravel-mix**. Unfixable without
+    overrides; the dev-server never runs in hot mode on these themes.
+- Final verification matrix run; record the final `npm audit` count (confirm
+  zero high/critical). Present the report; **only after the user confirms,
+  make the single final commit**.
 
 ## Known traps & pins (verify current-safe versions at run time)
 
-These are recurring, empirically-found issues in this toolchain. The **problem**
-descriptions are stable; the **exact versions are not** — confirm each against
-current advisories and changelogs before pinning.
+General npm traps:
 
-Runtime (browser-shipped) update traps:
+- **NEVER rename theme source files to satisfy new lint rules.** The theme
+  file layout is part of the platform baseline and must not be modified by
+  this skill — e.g. the `__index.scss` double-underscore partials (imported
+  as `@import "x/_index"`, which sass resolves to `__index.scss`). When a
+  bumped linter flags them (stylelint 16's
+  `scss/load-no-partial-leading-underscore` on james-bates, 2026-07), the fix
+  is to disable that rule in `.stylelintrc`
+  (`"scss/load-no-partial-leading-underscore": null`), NOT to rename files or
+  rewrite the imports. Renaming also breaks the sass build resolution chain
+  (`x/index` does not resolve to `__index.scss`). Content fixes inside
+  existing files (formatting via `--fix`) are fine; file renames are not.
+- **Corrupted `node_modules/.bin` after incremental installs** — an
+  `npm install --save-dev <pkg>` right after removing a large dependency can
+  leave `.bin` shims missing (`npx mix` → "could not determine executable to
+  run"; `npx prettier` silently downloading the registry version instead of
+  using the local one) even though the package is present. laravel-mix's own
+  mid-build dependency auto-install (see `sass` above) is a common trigger.
+  Fix: `rm -rf node_modules && npm install` (keep the lock). Confirmed on
+  Bracewell (2026-07) exactly as described.
 
-The **general pattern:** front-end libraries can ship breaking HTML/CSS or SASS
-changes inside a minor version bump. For any such library a given theme uses,
-read the changelog before accepting the update and confirm the compiled output
-(markup, theme integration, SASS `@import`s) still works — don't trust semver
-alone. The libraries below are examples seen on one project; a theme may use
-these, none of them, or completely different ones — treat them as illustrations
-of the pattern, not a required checklist.
+Runtime (browser-shipped) update traps — the general pattern: front-end
+libraries can ship breaking HTML/CSS or SASS changes inside a minor bump. Read
+the changelog before accepting and confirm compiled output still works:
 
-- **select2** (example) — `4.0.13 → 4.1.0` was a breaking release disguised as a
-  minor (HTML/CSS structure changes; broke select2-bootstrap-5-theme). Skipped.
-- **tabulator-tables** (example) — minor jumps were generally safe, but its SASS
-  was overhauled in 6.4, so the theme's
-  `@import "~tabulator-tables/src/scss/tabulator.scss"` had to be reverified
-  (new sass deprecation warnings expected and harmless).
+- **select2** (example) — `4.0.13 → 4.1.0` was a breaking release disguised as
+  a minor (broke select2-bootstrap-5-theme). Skipped.
+- **tabulator-tables** (example) — minors generally safe, but its SASS was
+  overhauled in 6.4; theme `@import`s had to be reverified.
 
-Build-toolchain pins (add to `"overrides"`):
+Build-toolchain pins (direct devDependencies, NOT overrides):
 
-- **webpack** — recent 5.10x releases removed `lib/SizeFormatHelpers` (which
-  laravel-mix 6.0.49 requires) and changed ProgressPlugin options in ways that
-  break webpackbar 5. Pin webpack to the newest 5.10x that still ships
-  `SizeFormatHelpers` AND is CVE-clean (was `~5.104.1` at last cycle — reverify).
-- **typescript** — a new TypeScript major breaks @typescript-eslint 6 /
-  ts-api-utils (`Cannot read properties of undefined (reading 'Intrinsic')`).
-  Pin to the latest 5.x (`~5.9.3` at last cycle — reverify).
-- **@sentry/node** — 8.x–10.x are vulnerable via @opentelemetry. Pin to the
-  version `npm audit fix` selects (was `7.120.4`; lighthouse tree, unused
-  telemetry).
-- **serialize-javascript** — the fixed release exists but terser-webpack-plugin
-  5.x pins an older major; override to the fixed version (`^7.0.5` at last
-  cycle).
-
-Residual overrides (Phase 4, dev-only unused paths):
-
-- **markdownlint-cli** — wp-scripts pins an old 0.31 (old markdown-it/minimatch
-  tree); override forward (`^0.49.1` at last cycle).
-- **uuid** — node-notifier/sockjs pin uuid 8; v11 keeps the v4 API, so override
-  forward.
-- **webpack-dev-server** — mix + wp-scripts pin 4.x; overriding to 5.x is ONLY
-  safe because `mix watch` (non-hot) never starts the dev-server. Flag that
-  `mix watch --hot` may break; it is unused in these themes.
-
-Example consolidated `"overrides"` block (adjust every version to current-safe):
-
-```json
-"overrides": {
-  "@sentry/node": "7.120.4",
-  "serialize-javascript": "^7.0.5",
-  "typescript": "~5.9.3",
-  "webpack": "~5.104.1",
-  "markdownlint-cli": "^0.49.1",
-  "uuid": "^11.1.1",
-  "webpack-dev-server": "^5.2.6"
-}
-```
+- **webpack** — see Phase 2. The pin is possible as a direct dep because
+  laravel-mix's own range (`^5.60`) accepts it.
 
 ## Verification matrix (every phase)
 
-**First, discover the theme's actual scripts.** Read the `"scripts"` block in
-`package.json` before running anything. The names below (`build`, `lint:js`,
-`lint:css`) are what Bracewell and ~80% of sites use, but they are not
-guaranteed. Use whichever of them actually exist; if a site names them
-differently (or has extra build/lint/test scripts), run that site's equivalent
-scripts instead. Never assume a script exists — confirm it in `package.json`
-first.
+First discover the theme's actual scripts in `package.json` — never assume.
 
 - `npm audit` — count by severity; save the report per phase.
-- `npm run build` (or the theme's build script) — exit 0, AND compare warning
-  count vs baseline.
-- `npm run lint:js` and `npm run lint:css` (or the theme's lint scripts).
-- `npx lefthook run pre-commit` after any tooling change, if lefthook is present.
-- End of cycle: load the local site and smoke-test whatever front-end libraries
-  this theme actually uses (e.g. sliders, selects, tables, charts, video), or at
-  minimum confirm those runtime libs are present in `dist/*.js`.
-- If the repo uses shared CI workflows, the PR validates them.
+- `npm run build` (or equivalent) — exit 0, AND compare warning count vs
+  baseline.
+- `npm run lint:js` and `npm run lint:css` (or equivalents).
+- `npx lefthook run pre-commit` after any tooling change, if lefthook exists.
+- End of cycle: load the local site and smoke-test the front-end libraries the
+  theme actually uses (sliders, selects, video…), or at minimum confirm those
+  runtime libs are present in `dist/*.js`.
 
 ## Known blockers to NOT attempt
 
-- **stylelint 17 / @wordpress/stylelint-config 24** — the WP config only peers
-  stylelint ^16; blocked upstream and fixes no CVE.
-- **Runtime libs with a breaking major behind a small bump** (example:
-  select2 4.1.0) — skip; handle as a separate, QA'd task, not part of a security
-  bump.
-- **video.js 7 → 8** (example, only if the theme uses video.js) — separate task
-  with manual video QA (its xmldom / min-document CVEs are already fixed in-range
-  by audit fix on v7).
+- **stylelint 17 / @wordpress/stylelint-config** — the WP config peers
+  stylelint ^16 only; blocked upstream and fixes no CVE.
+- **Runtime libs with a breaking major behind a small bump** (e.g. select2
+  4.1.0) — separate, QA'd task, not part of a security bump.
 - **laravel-mix** — 6.0.49 is the last version ever; migrating off it is a
-  separate project. It is also the permanent root of the residual `elliptic`
-  tree (elliptic → browserify-sign/create-ecdh → crypto-browserify →
-  node-libs-browser → laravel-mix): no upstream fix, low severity, build-time
-  only. Accept and document it.
+  separate project and the permanent root of the residual trees documented in
+  Phase 4. Accept and document.
+
+## Capture new learnings (improve this skill over time)
+
+This guide covers the cases seen so far — it is not exhaustive. On every run,
+stay alert to anything that falls **outside** these instructions: a new trap or
+error not documented here, a package the tree-shrink inventory didn't
+anticipate, a migration step the guide doesn't cover, a theme whose structure
+breaks an assumption, or a pin/peer that behaved differently than described. At
+the end of the cycle, briefly note each such learning to the user — what
+happened, what resolved it, and where in this skill it would belong — as a
+proposed addition. The goal is that the skill keeps improving with use, so
+don't silently work around gaps; surface them so they can be folded in.
 
 ## Deliverable
 
-A short report per phase capturing what changed: the audit count before/after
-(by severity), which packages were updated or overridden and why, any errors
-encountered and the fix applied, and the residual advisories that were accepted
-and documented. Attach the per-phase `npm audit` reports.
+A report capturing, per phase: the audit count before/after (by severity),
+what was replaced/updated and why, any errors and their fixes, and — centrally
+— the **residuals table**: each remaining advisory with severity, the
+dependency chain it comes from (provenance), why no override-free fix exists,
+and why it is acceptable. If a last-resort override was used for a
+high/critical, its justification appears here. Attach the per-phase `npm
+audit` reports.
