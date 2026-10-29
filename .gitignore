@@ -11,3 +11,6 @@ desktop.ini
 
 # Packaged skill bundles (generated artifacts — sources live in each SKILL.md)
 *.skill
+
+# Claude skills sync cache (managed by the app, not source)
+synced/

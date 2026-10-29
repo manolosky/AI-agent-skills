@@ -19,6 +19,8 @@ These skills are tailored to a **WordPress + Bootstrap 5** development workflow 
 | [`run-tests`](run-tests/SKILL.md) | Run the full quality suite for a WordPress theme — PHP CodeSniffer, Stylelint, ESLint, PHPStan, and Rector dry-run — and fix issues until every check passes. |
 | [`npm-vuln-remediation`](npm-vuln-remediation/SKILL.md) | Remediate `npm audit` findings in WordPress themes built with laravel-mix + `@wordpress/scripts`, through a phased process (direct updates, `npm update`/`audit fix`, major bumps, targeted overrides) that keeps the build and lints green. |
 | [`git-commit-format`](git-commit-format/SKILL.md) | Enforce the project's commit-message convention (`type: description`, in English) and attribute commits only to the user's Git identity — never co-authored by an AI. |
+| [`pr-format`](pr-format/SKILL.md) | The team's pull request format: `<type>: <ticket> <short description>` title, a `## Summary` with one bullet per change, and a `## Test plan` checklist of what was verified. |
+| [`dependabot-remediation`](dependabot-remediation/SKILL.md) | Resolve Dependabot alerts (npm + Composer) with read-only alert intake, minimal fixes, mandatory gates proving the frontend is unchanged (bundle diff + computed-style visual comparison), commit/PR deliverables, and a known-issues list of tested fixes, each linked to the PR or commit that proved it. |
 
 ## Repository layout
 
@@ -30,9 +32,16 @@ These skills are tailored to a **WordPress + Bootstrap 5** development workflow 
 │   └── SKILL.md
 ├── bootstrap-markup/
 │   └── SKILL.md
+├── dependabot-remediation/
+│   ├── SKILL.md
+│   ├── references/
+│   ├── scripts/
+│   └── known-issues.md
 ├── git-commit-format/
 │   └── SKILL.md
 ├── npm-vuln-remediation/
+│   └── SKILL.md
+├── pr-format/
 │   └── SKILL.md
 ├── run-tests/
 │   └── SKILL.md
