@@ -29,11 +29,11 @@ is the source of truth for what needs remediating.
    only the individual packages the theme's configs actually consume. Most
    advisories in these themes live in wp-scripts' unused tooling (jest,
    playwright, puppeteer, lighthouse/@sentry/@opentelemetry, markdownlint…);
-   removing the tree kills them at the root. Validated on RFH (2026-07):
-   56 → 11 vulnerabilities and 1,899 → 1,171 packages (−38%) with zero
-   overrides. Re-validated on Bracewell (2026-07): ~1,900 → 1,184 packages,
-   a 7-entry overrides block removed entirely, 0 high/critical, same
-   11-residual floor.
+   removing the tree kills them at the root. Validated on one theme
+   (2026-07): 56 → 11 vulnerabilities and 1,899 → 1,171 packages (−38%) with
+   zero overrides. Re-validated on another (2026-07): ~1,900 → 1,184
+   packages, a 7-entry overrides block removed entirely, 0 high/critical,
+   same 11-residual floor.
 2. **Overrides are restricted.** The goal is to fix the maximum number of
    issues WITHOUT `"overrides"`. Pins go in as **direct devDependencies** when
    the parent's semver range accepts the pinned version (npm dedupes the tree
@@ -109,8 +109,8 @@ scope).
    No lint-config changes should be needed —
    the configs already reference these package names. If the theme still uses
    a legacy `.eslintrc`, migrate to a flat `eslint.config.cjs` using the
-   **team's minimal shape** (validated on grant-eisenhofer and
-   williams-connolly, adopted on james-bates 2026-07). Do NOT spread the full
+   **team's minimal shape** (validated on several themes and adopted as the
+   standard, 2026-07). Do NOT spread the full
    flat preset (`...wordpress.configs.recommended`): it drags in
    `eslint-plugin-import` whose typescript resolver needs
    `eslint-import-resolver-typescript` hoisted as a direct devDependency plus
@@ -147,7 +147,7 @@ scope).
    only effective rules are prettier/prettier and curly (which the siblings
    get from the legacy spread; here it is declared explicitly). Dropping the
    plugin entirely is equivalent lint-wise and removes ~170 packages plus its
-   nested minimatch/brace-expansion advisory paths (james-bates 2026-07:
+   nested minimatch/brace-expansion advisory paths (2026-07:
    1,184 → 1,011 packages, 20 → 16 vulns). Two consequences to expect and
    accept: (a) `@wordpress/prettier-config` 4.x dropped the `wp-prettier`
    fork and its paren-spacing — the current WP style has NO spaces inside
@@ -229,7 +229,7 @@ General npm traps:
   this skill — e.g. the `__index.scss` double-underscore partials (imported
   as `@import "x/_index"`, which sass resolves to `__index.scss`). When a
   bumped linter flags them (stylelint 16's
-  `scss/load-no-partial-leading-underscore` on james-bates, 2026-07), the fix
+  `scss/load-no-partial-leading-underscore`, 2026-07), the fix
   is to disable that rule in `.stylelintrc`
   (`"scss/load-no-partial-leading-underscore": null`), NOT to rename files or
   rewrite the imports. Renaming also breaks the sass build resolution chain
@@ -241,8 +241,8 @@ General npm traps:
   run"; `npx prettier` silently downloading the registry version instead of
   using the local one) even though the package is present. laravel-mix's own
   mid-build dependency auto-install (see `sass` above) is a common trigger.
-  Fix: `rm -rf node_modules && npm install` (keep the lock). Confirmed on
-  Bracewell (2026-07) exactly as described.
+  Fix: `rm -rf node_modules && npm install` (keep the lock). Confirmed
+  (2026-07) exactly as described.
 
 Runtime (browser-shipped) update traps — the general pattern: front-end
 libraries can ship breaking HTML/CSS or SASS changes inside a minor bump. Read
@@ -273,8 +273,11 @@ First discover the theme's actual scripts in `package.json` — never assume.
 
 ## Known blockers to NOT attempt
 
-- **stylelint 17 / @wordpress/stylelint-config** — the WP config peers
-  stylelint ^16 only; blocked upstream and fixes no CVE.
+- **stylelint 17 / @wordpress/stylelint-config** — no longer blocked:
+  config 25+ peers stylelint ^17.14.1. It is no longer needed for the
+  `postcss-selector-parser` advisory pinned by config 24 (6.1.5 backport,
+  lockfile-only). As maintenance it is a Phase 3 major (ask first): follow
+  the stylelint 17 row in `dependabot-remediation/known-issues.md`.
 - **Runtime libs with a breaking major behind a small bump** (e.g. select2
   4.1.0) — separate, QA'd task, not part of a security bump.
 - **laravel-mix** — 6.0.49 is the last version ever; migrating off it is a
