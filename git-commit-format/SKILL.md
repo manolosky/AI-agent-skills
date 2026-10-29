@@ -3,7 +3,8 @@ name: git-commit-format
 description: >-
   Govern this project's whole Git workflow: never commit on a protected branch,
   create and name work branches from the right base, write commit messages in the
-  project's convention, push, open PRs, and clean up. Use this skill whenever any
+  project's convention, push, prepare PR text (the user creates every PR), and
+  clean up. Use this skill whenever any
   Git operation comes up — even if the user just says "commit this", "save my
   work", "push these changes", "let's start ticket X", "sube esto", or "haz el
   commit" — and also when you finish writing code and committing is the natural
@@ -220,18 +221,11 @@ someone else pushed in the meantime.
 
 The PR targets **the same branch the work was cut from**: `main` for tickets on a
 published project, `staging`/`development` for sprint work. Sending sprint work
-at `main` is the classic mistake — verify the base before opening it.
+at `main` is the classic mistake — tell the user which base the PR must target.
 
-Title: `[#0000] Short description`, or just the description when there's no
-ticket. Body: what changes, why, and how to test it.
-
-```bash
-gh pr create --base staging --head feature/0000-short-title \
-  --title "[#0000] Change contact form labels" --body "..."
-```
-
-Confirm with the user before opening the PR. If the repo has a PR template,
-follow it instead of imposing this format.
+Never create, open, edit or comment on a pull request — no `gh pr create`, no
+API call, under any scenario. The user creates every PR. Invoke the
+`pr-format` skill to return its title and description as text, ready to paste.
 
 ## Merge and cleanup
 
