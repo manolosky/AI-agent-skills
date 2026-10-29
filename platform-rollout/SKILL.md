@@ -13,7 +13,7 @@ description: >
   npm-vuln-remediation skill), full
   composer/npm script verification plus a curl smoke test (visual QA stays
   manual in the local environment), and — as the deliverable — a prepared
-  commit message and PR comment. Single commit at the end, only after
+  commit message and PR description. Single commit at the end, only after
   developer approval.
 ---
 
@@ -25,7 +25,7 @@ guard:** this skill is NOT for vanilla JS sites or headless (pnpm) projects —
 if Phase 0 discovery shows the project is not a PHP WordPress site using npm,
 stop and tell the developer the project is out of scope. **Nothing is committed per phase** — all work stays
 uncommitted until the developer approves the final state; then one commit.
-The deliverables are the **commit message** and the **PR comment**, prepared
+The deliverables are the **commit message** and the **PR description**, prepared
 for the developer.
 
 ## Current roll-out parameters (update these each cycle)
@@ -53,7 +53,7 @@ projects place things differently:
    (`package-lock.json` + `composer.json` + WP theme/plugin structure). If
    you find `pnpm-lock.yaml` (headless) or no PHP/WordPress at all (vanilla
    JS), STOP — the project is out of this skill's scope; report it and do
-   nothing else. A third out-of-scope case (found on kirby-drake-law, Jul
+   nothing else. A third out-of-scope case (found in Jul
    2026): a legacy PHP WordPress site (e.g. an old Genesis child theme) with
    NO `.github/workflows`, NO `composer.json` and NO `package.json` — a site
    never onboarded to the platform baseline. STOP there too, report the
@@ -76,11 +76,11 @@ If the `gcupdate` alias is not available in the environment, fall back to
 `git checkout main && git pull origin main`, and note it. Confirm the working
 tree is clean before starting.
 
-**Unpublished sites branch from `staging`, not `main`** (found on
-bracewell-prg, Jul 2026): on a site that has not launched yet, `main` may hold
+**Unpublished sites branch from `staging`, not `main`** (found in
+Jul 2026): on a site that has not launched yet, `main` may hold
 only the initial setup commit while all real work lives in `staging`. Check
 `git log main..origin/staging --oneline | head` first — if `main` is clearly
-stale, base the roll-out branch on `staging` and say so in the PR comment.
+stale, base the roll-out branch on `staging` and say so in the PR description.
 When in doubt, ask the developer which base to use before starting.
 
 ## Phase 2 — GitHub Actions
@@ -91,7 +91,7 @@ The version tag bump is the ONLY change — do not touch anything else in the
 workflow files, with ONE exception: newer shared-workflow versions may
 require secrets that older callers don't pass, and GitHub rejects the whole
 workflow file with "Secret <NAME> is required, but not provided while
-calling" (found on right-hat, Jul 2026: `coding-standards.yml` came from
+calling" (found in Jul 2026: `coding-standards.yml` came from
 `@1.1.8` and lacked `CONTENT_PILOT_USER_TOKEN`, which `build-with-cache`,
 `php-coding-standards`, and `php-static-analysis` require at `@1.10.0`).
 After bumping, compare each caller's `secrets:` blocks against a sibling
@@ -126,11 +126,11 @@ whether this cycle should also migrate the bundler to **Vite**. This is a
 blocking question — do not start any dependency work until answered.
 
 - **YES** → follow `vite-migration.md` in this skill's directory (procedure
-  distilled from the starter theme's `feat/vite` branch plus the
-  stokes-lawrence roll-out, Jul 2026). The migration replaces most of the
+  distilled from the starter theme's `feat/vite` branch plus the first
+  production roll-out, Jul 2026). The migration replaces most of the
   remediation: dropping laravel-mix/webpack shrinks the tree so much that the
-  npm vulnerabilities usually vanish with it (stokes-lawrence: thousands of
-  packages → 298, `npm audit` 0). After migrating, run `npm audit`; only if
+  npm vulnerabilities usually vanish with it (first roll-out: thousands of
+  packages → ~300, `npm audit` 0). After migrating, run `npm audit`; only if
   vulnerabilities remain, delegate the leftovers to the
   `npm-vuln-remediation` skill. The migration's build/lint verification
   replaces that skill's for this cycle.
@@ -141,7 +141,7 @@ in another branch or open PR (e.g. merged into `development` but not yet in
 `main` — compare `git log main..development -- package.json`), do NOT re-run
 it: re-doing it on this branch duplicates work and guarantees package-lock
 merge conflicts. Ask the developer, and by default reference the existing
-PR/branch in this roll-out's PR comment instead.
+PR/branch in this roll-out's PR description instead.
 
 Otherwise, do NOT update JS dependencies from this skill. This entire phase
 is handled by **invoking the `npm-vuln-remediation` skill**, which owns the
@@ -176,8 +176,8 @@ Run everything; a failing step blocks the roll-out until fixed or explained:
    the theme's dist assets are referenced. If the local site is not running,
    report it as a pending check — do not set up browser tooling. **Visual
    testing is done by the developer in the local environment**; note it as a
-   manual step in the PR comment.
-   **Stale-rewrite-rules trap** (bracewell-prg, Jul 2026): if pretty
+   manual step in the PR description.
+   **Stale-rewrite-rules trap** (Jul 2026): if pretty
    permalinks 404 while the `?post_type=x&name=y` query form returns 200, the
    rewrite rules went stale (switching the working tree between branches with
    different CPT/rewrite code while the site is being served can cause this).
@@ -199,21 +199,18 @@ stay as-is.
 1. **Commit message** (single line, team format, no AI attribution):
    `chore: update github actions workflow refs to 1.10.0`
    (adjust to what actually changed).
-2. **PR comment** (English, short — detailed verification results go to the
-   developer in the conversation, not into the PR). Standard template; keep
-   only the bullets for things this run actually touched or verified, and
-   add one bullet per extra change if any:
-
-```markdown
-## Platform roll-out (maroon)
-
-- **GitHub Actions**: all shared workflow refs updated <old> → <new> across the <N> workflow files
-- **PHPCompatibilityWP**: <"enabled in phpcs.xml (rule + testVersion)" | "already configured on this site" + where>
-- **JavaScript dependencies**: <"updated via remediation cycle" + audit summary | "handled separately in <branch/PR>" + why>
-```
+2. **PR title and description** following the `pr-format` skill (type
+   `chore`). One Summary bullet per roll-out area this run actually
+   touched — GitHub Actions (refs <old> → <new> across <N> workflow files),
+   PHPCompatibilityWP (enabled, or already configured and where),
+   JavaScript dependencies (remediation summary, or the branch/PR that
+   handles it) — plus one bullet per extra change. The Test plan lists the
+   checks that passed, one line each; detailed results go to the developer
+   in the conversation, not into the PR.
 
 **Only after the developer approves: make the single final commit** on
-`feat/maroon-roll-out`. Never push or open the PR unless asked.
+`feat/maroon-roll-out`. Never push unless asked, and never create the PR —
+the user creates it and pastes the `pr-format` text.
 
 ## Capture new learnings (improve this skill over time)
 

@@ -1,26 +1,25 @@
 # Laravel-mix → Vite migration (optional Phase 4 step)
 
 Controlled migration of a theme's bundler from laravel-mix (webpack) to Vite,
-as executed on stokes-lawrence (Jul 2026). Only run this when the developer
-answered YES to the Phase 4 migration question.
+as first executed on a production theme (Jul 2026). Only run this when the
+developer answered YES to the Phase 4 migration question.
 
 ## Reference implementation
 
-**The canonical reference is the standardized config shipped on
-stokes-lawrence and bracewell-prg** (their `vite.config.js` files are
-identical; Bracewell was aligned to them in Jul 2026). The goal is bundle
+**The canonical reference is the standardized config in step 3**, identical
+on every theme already migrated (aligned in Jul 2026). The goal is bundle
 standardization: every migrated site gets EXACTLY this shape — static `base`
 with the theme slug hardcoded, `quietDeps: true`, NO copy-images plugin, NO
 dynamic base. The only allowed per-site deltas are the `rollupOptions.input`
 entries (whatever the theme's PHP enqueues) and hand-added IIFE wraps for
 extra JS entries (see below).
 
-- References: `C:\Users\Manuel\Local Sites\stokes-lawrence\...\themes\stokes-lawrence`
-  and `C:\Users\Manuel\Local Sites\bracewell-prg\...\themes\bracewell-prg`
+- To compare against a real checkout, ask the developer which local theme is
+  already migrated; its `vite.config.js` must match the step 3 template.
 - The starter theme's `main` keeps evolving its own config (copy-images
   plugin, dynamic `basename(process.cwd())` base, Vite 8) — those extras are
   NOT part of the team standard; do not fold them in unless the standard is
-  explicitly changed. Diff against stokes-lawrence/bracewell-prg instead.
+  explicitly changed. Diff against an already-migrated theme instead.
 
 Note the **known gap** in the references (Font Awesome fonts, step 6 below)
 that must be fixed on every site that bundles FA.
@@ -123,14 +122,13 @@ export default defineConfig({
 Key constraints:
 
 - `base` makes emitted asset URLs absolute to the theme's `dist/` — required
-  for fonts/images referenced from CSS (and for PDF/vCard crawlers, per the
-  reference's `e141b49`).
+  for fonts/images referenced from CSS (and for PDF/vCard crawlers).
 - Output names have NO hashes because the PHP enqueue uses fixed file names +
   `filemtime()` cache busting — check `includes/assets.php` (or equivalent)
   and match the entry names to what is enqueued.
 - `outputStyle: 'expanded'` is required so Font Awesome icon glyphs encode
   correctly (same rule as under mix).
-- **Multi-entry themes** (Bracewell: 2 JS + 3 SCSS entries): add every
+- **Multi-entry themes** (e.g. 2 JS + 3 SCSS entries): add every
   enqueued entry to `rollupOptions.input`, and wrap EACH additional classic
   JS entry by hand inside the same `iife-wrap-frontend` plugin block
   (duplicate the `const chunk = bundle["<name>.js"] …` lookup — keep the
@@ -189,7 +187,7 @@ new Function('module', 'require', 'window', 'jQuery', src)(
   (search all of `assets/css`, plugins partials included).
 - Plain CSS files from packages (flickity, aos) imported **without** the
   `.css` extension get inlined by sass — leave those imports extensionless,
-  and if a theme imports one WITH the extension (Bracewell:
+  and if a theme imports one WITH the extension (e.g.
   `@import "~flickity/dist/flickity.css"`), **drop the `.css`** too:
   with the extension sass emits a plain CSS `@import` instead of inlining.
 - **Font Awesome fix (NOT in the reference — the reference has this bug
@@ -202,7 +200,7 @@ new Function('module', 'require', 'window', 'jQuery', src)(
 $fa-font-path: "../../node_modules/@fortawesome/fontawesome-free/webfonts";
 ```
 
-  **Vendored FA variant (Bracewell, Jul 2026)**: some themes bundle FA inside
+  **Vendored FA variant (Jul 2026)**: some themes bundle FA inside
   the theme (`assets/css/plugins/fontawesome-free/` with its own `webfonts/`)
   instead of the npm package. Same fix, different path — relative to the
   entry SCSS:
@@ -226,14 +224,14 @@ rm -rf node_modules package-lock.json dist && npm install
 ```
 
 The lock MUST be regenerated (the old one holds the entire webpack tree).
-Expect a dramatic shrink (stokes-lawrence: thousands of packages → 298,
-`npm audit` 0; bracewell-prg Jul 2026: ~1,900 → 344 packages, 71 → 0
-vulnerabilities, zero overrides). This is also what closes most npm
+Expect a dramatic shrink (observed Jul 2026: thousands of packages → ~300
+with `npm audit` 0 on one theme; ~1,900 → 344 packages and 71 → 0
+vulnerabilities on another, zero overrides). This is also what closes most npm
 Dependabot alerts — webpack-dev-server / uuid / elliptic / old fast-uri
 disappear with the tree.
 
-**CI trap — platform optional dependencies (npm bug #4828, hit on Bracewell
-`development`, Jul 2026):** running `npm i` while `node_modules` already
+**CI trap — platform optional dependencies (npm bug #4828, hit on a
+`development` branch, Jul 2026):** running `npm i` while `node_modules` already
 exists (typical when resolving a package-lock merge conflict by deleting the
 lock and reinstalling) records ONLY the platform binaries installed on the
 current machine — on Windows the lock ends up with 2 `@rollup/*` and 1
@@ -255,18 +253,18 @@ Rules:
 - `npm run build` — no unresolved-URL warnings; check `dist/` contains the
   JS/CSS entries with the exact names PHP enqueues, plus all fonts.
 - IIFE wrap: the built JS must start with `(function(){` and end with
-  `})();`. Team decision (stokes-lawrence, Jul 2026): keep exact parity with
+  `})();`. Team decision (Jul 2026): keep exact parity with
   the starter's block. Two known caveats were accepted knowingly — the
   `//# sourceMappingURL` comment ends up inside the wrapper (browsers then
   ignore the sourcemap), and only the entries listed by hand in the plugin
   are wrapped — verify EVERY classic JS entry starts with `(function(){`
-  (Bracewell wraps `frontend.js` + `key-contacts.js`). If the caveats ever
+  (a theme with a second classic entry wraps both). If the caveats ever
   become a problem, the fix is a generalized wrapper that loops all chunks
   and re-appends the sourcemap comment after `})();` — propose it upstream
   to the starter first so parity is preserved.
 - `npm audit` — fold results into the roll-out's residuals report; if
   vulnerabilities remain, hand off to the `npm-vuln-remediation` skill.
-  Known post-migration leftovers and their fixes (Bracewell, Jul 2026 —
+  Known post-migration leftovers and their fixes (Jul 2026 —
   reached **0 vulnerabilities** applying both):
   - Advisories nested under `@wordpress/eslint-plugin` (its
     eslint-plugin-import pins minimatch 3 → old brace-expansion with no
@@ -283,5 +281,5 @@ Rules:
   our eslint config).
 - Grep the built CSS for font URLs: `grep -o "url([^)]*fa-[^)]*)"
   dist/frontend-style.css` — they must point at the theme `dist/`.
-- Manual visual QA list for the PR comment: Font Awesome icons, select2
+- Manual visual QA list for the PR description: Font Awesome icons, select2
   selects, jQuery-plugin widgets (accordions, popups), carousels.
