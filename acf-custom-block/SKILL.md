@@ -243,7 +243,7 @@ define( 'BLOCK_SLUG_SUBFIELD_NAME', 'field_XXXXXXXXXX' );
    ```php
    'namespace/block-slug',
    ```
-   Use the same namespace prefix as the existing custom blocks (e.g. `bracewell-prg/`, `gb/`).
+   Use the same namespace prefix as the existing custom blocks (e.g. `<theme-slug>/`).
 
 2. **`register_blocks()` function** — append a `register_block_type()` call:
    ```php
